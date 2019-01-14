@@ -145,13 +145,6 @@ class ResNet(nn.Module):
         f.append(x)
         x = self.layer4(x)
         f.append(x)
-        # x = self.avgpool(x)
-        # x = x.view(x.size(0), -1)
-        # x = self.fc(x)
-        '''
-        f中的每个元素的size分别是 bs 256 w/4 h/4， bs 512 w/8 h/8， 
-        bs 1024 w/16 h/16， bs 2048 w/32 h/32
-        '''
         return x, f
 
 

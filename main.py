@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import torch
 from torch.autograd import Variable
 import os

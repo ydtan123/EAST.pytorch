@@ -1,7 +1,8 @@
 #data
-dataroot='./data'  #./data/train/img      ./data/train/gt
-test_img_path='./data/test/img'
+dataroot='./dataset'  #./data/train/img      ./data/train/gt
+test_img_path='./dataset/test'
 result = './result'
+number_of_test = 50
 
 lr = 0.0001
 gpu_ids = [0]

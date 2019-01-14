@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import cv2
 import time
 import math
@@ -16,6 +17,7 @@ import sys
 from torchvision import transforms
 import model
 test_data_path = cfg.test_img_path
+number_of_test = cfg.number_of_test
 
 
 def rotate(box_List,image):
@@ -64,7 +66,7 @@ def get_images_for_test():
                     files.append(os.path.join(parent, filename))
                     break
     
-    # print('Find {} images'.format(len(files)))
+    print('Find {} images in {}'.format(len(files), test_data_path))
     return files
 
 def resize_image(im, max_side_len=2400):
@@ -275,7 +277,9 @@ def predict(model, criterion, epoch):
     im_fn_list = get_images_for_test()
     start = time.time()
 
-    for idx, im_fn in enumerate(im_fn_list):    
+    for idx, im_fn in enumerate(im_fn_list):
+        if (idx > number_of_test):
+            break
         print('EAST <==> TEST <==> idx:{} <==> Begin'.format(idx))
         im = cv2.imread(im_fn)[:, :, ::-1]
 

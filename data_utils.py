@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import os
 import math
 import random
@@ -953,8 +954,9 @@ class custom_dset(data.Dataset):
     def __init__(self, img_root, txt_root, vis = False):
         
         self.img_path_list, self.img_name_list = get_images(img_root)
-        
         self.txt_root = txt_root
+
+        print("Getting images from {}, txt from {}".format(img_root, txt_root))
         
         self.vis = vis
 
