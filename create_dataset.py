@@ -10,7 +10,16 @@ import numpy as np
 import cv2
 
 
-def getLocation(txtfile, imgw, imgh):
+def writeGT(words, filename, img=None):
+    with open(filename, 'w') as fgt:
+        for w in words:
+            fgt.write("{0},{1},{2},{3},{4},{5},{6},{7},{8}\n".format(w[1], w[2], w[3], w[2], w[3], w[4], w[1], w[4], w[0]))
+            if (img is not None):
+                print("Rectange {0} {1} {2} {3}".format(w[1], w[2], w[3], w[4]))
+                cv2.rectangle(img, (w[1], w[2]), (w[3], w[4]), (0, 255, 0), 1)
+
+                    
+def getLocation(txtfile, imgw, imgh, merge):
     #0 0.056711 0.629032 0.030246 0.204301
     symbols = []
     with open(str(txtfile)) as f:
@@ -36,16 +45,18 @@ def getLocation(txtfile, imgw, imgh):
         by = s[2] + s[4] 
         bx = s[1] + s[3]
         found = False
-        for w in words:
-            if (math.fabs(ty - w[2]) < s[4] and math.fabs(tx - w[3]) < s[3] * 4):
-                w[0] += s[0]
-                if (ty < w[2]):
-                    w[2] = int(ty)
-                w[3] = int(bx)
-                if (by > w[4]):
-                    w[4] = int(by)
-                found = True
-                break
+        if (merge):
+            for w in words:
+                if (len(w[0]) < 3
+                    and math.fabs(ty - w[2]) < s[4] and math.fabs(tx - w[3]) < s[3] * 4):
+                    w[0] += s[0]
+                    if (ty < w[2]):
+                        w[2] = int(ty)
+                    w[3] = int(bx)
+                    if (by > w[4]):
+                        w[4] = int(by)
+                    found = True
+                    break
         if (not found):
             words.append([s[0], int(tx), int(ty), int(bx), int(by)])
     return words
@@ -53,10 +64,16 @@ def getLocation(txtfile, imgw, imgh):
 ## Arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--image", type=str, help="Path to the input images", default='')
-parser.add_argument("-d", "--debug", type=int, help="Debug mode", default=0)
+parser.add_argument("-d", "--debug", action='store_true', help="Debug mode", default=0)
 parser.add_argument("-m", "--max", type=int, help="Maximum images to process", default=100000)
 parser.add_argument("-p", "--prepare", type=str, help="Prepare training and testing sets", default='')
 parser.add_argument("-s", "--save", action='store_true', help="Save text area")
+parser.add_argument("-g", "--merge-text", action='store_true', help='Merge nearby text areas')
+parser.add_argument("-a", "--train-img-root", type=str, help='train image root')
+parser.add_argument("-b", "--train-gt-root", type=str, help='train gt root')
+parser.add_argument("-c", "--test-img-root", type=str, help='test image root')
+parser.add_argument("-r", "--resize", type=str, default="", help='resize the image')
+
 args = vars(parser.parse_args())
 
 if (args["prepare"] != ''):
@@ -64,35 +81,51 @@ if (args["prepare"] != ''):
     train_size, test_size = int(d[0]), int(d[1])
     trn = 0
     tst = 0
-    for f in pathlib.Path(args["image"]).glob("*.jpg"):
-        if (trn >= train_size and tst > test_size):
+    if not os.path.exists(args['train_img_root']):
+        os.makedirs(args['train_img_root'])
+    if not os.path.exists(args['train_gt_root']):
+        os.makedirs(args['train_gt_root'])
+    if not os.path.exists(args['test_img_root']):
+        os.makedirs(args['test_img_root'])
+    file_dict = {}
+    for f in pathlib.Path(args["image"]).glob("**/*.jpg"):
+        if (f in file_dict):
+            print("{0} has more than one copy".format(f))
+            continue
+        if (not os.path.isfile(str(f.with_suffix(".txt")))):
+            print("GT file for {0} does not exist".format(f))
+            continue
+        file_dict[f] = True
+        if (trn >= train_size and tst >= test_size):
             break
         img = cv2.imread(str(f))
-        new_img = np.zeros((784, 1280, 3), dtype=np.uint8)
-        new_img[0:img.shape[0], 0:img.shape[1]] = img
-        if (args["debug"] > 0):
-            cv2.imshow("img", new_img)
-            cv2.waitKey(0)
-        words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0])
+        new_img = img
+        if (args["resize"] != ""):
+            new_img = np.zeros((784, 1280, 3), dtype=np.uint8)
+            new_img[0:img.shape[0], 0:img.shape[1]] = img
+        words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0], args["merge_text"])
 
         if (trn < train_size):
-            cv2.imwrite("./dataset/train/img/img_{0}.jpg".format(trn), new_img)
-            with open("./dataset/train/gt/img_{0}.txt".format(trn), 'w') as fgt:
-                for w in words:
-                    print(words)
-                    fgt.write("{0},{1},{2},{3},{4},{5},{6},{7},{8}\n".format(w[1], w[2], w[3], w[2], w[3], w[4], w[1], w[4], w[0]))
+            writeGT(
+                words, "{0}/img_{1}.txt".format(args["train_gt_root"], trn),
+                new_img if args["debug"] else None)
+            cv2.imwrite(
+                "{0}/img_{1}.jpg".format(args["train_img_root"],trn), new_img)
             print("Train: {0} -> {1}".format(f, trn))
+            file_dict[f] = "train_{0}".format(trn)
             trn += 1
         elif (tst < test_size):
-            cv2.imwrite("./dataset/test/img/img_{0}.jpg".format(tst), new_img)
-            with open("./dataset/test/gt/img_{0}.txt".format(tst), 'w') as fgt:
-                for w in words:
-                    print(words)
-                    fgt.write("{0},{1},{2},{3},{4},{5},{6},{7},{8}\n".format(w[1], w[2], w[3], w[2], w[3], w[4], w[1], w[4], w[0]))
+            writeGT(words, "{0}/gt_img_{1}.txt".format(args["test_img_root"], tst))
+            cv2.imwrite("{0}/img_{1}.jpg".format(args["test_img_root"], tst), new_img)
             print("Test: {0} -> {1}".format(f, tst))
+            file_dict[f] = "test_{0}".format(tst)
             tst += 1
-    exit(0)
 
+    with open("{0}/filelog.txt".format(args["train_img_root"]), "w") as filelog:
+        for f, idx in file_dict.items():
+            filelog.write("{0} {1}\n".format(f, idx))
+
+"""
 processed = 0
 for f in pathlib.Path(args["image"]).glob("*.jpg"):
     if (args["debug"] > 0):
@@ -113,3 +146,4 @@ for f in pathlib.Path(args["image"]).glob("*.jpg"):
     processed += 1
     if (processed > args["max"]):
         break
+"""
