@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import argparse
 import torch
 from torch.autograd import Variable
 import os
@@ -62,20 +63,28 @@ def train(train_loader, model, criterion, scheduler, optimizer, epoch):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-a", "--data-root", type=str, default="", help='dataset root')
+    parser.add_argument("-c", "--config", type=str, default="", help='specify the config file')
+    args = vars(parser.parse_args())
+
+    cfg = __import__(args["config"]) if (args["config"] != "") else __import__(config)
+    dataroot = cfg.dataroot if (args["data_root"] == "") else args["data_root"]
+    
     hmean = .0
     is_best = False
 
     warnings.simplefilter('ignore', np.RankWarning)
     # Prepare for dataset
-    print('EAST <==> Prepare <==> DataLoader <==> Begin')
-    train_root_path = os.path.abspath(os.path.join('./dataset/', 'train'))
+    print('EAST <==> Prepare <==> DataLoader(dataroot={0}) <==> Begin'.format(dataroot))
+    train_root_path = os.path.abspath(os.path.join(dataroot, 'train'))
     train_img = os.path.join(train_root_path, 'img')
     train_gt  = os.path.join(train_root_path, 'gt')
 
     trainset = custom_dset(train_img, train_gt)
     train_loader = DataLoader(trainset, batch_size=cfg.train_batch_size_per_gpu*cfg.gpu,
         shuffle=True, collate_fn=collate_fn, num_workers=cfg.num_workers)
-    print('EAST <==> Prepare <==> Batch_size:{} <==> Begin'.format(cfg.train_batch_size_per_gpu*cfg.gpu))
+    print('EAST <==> Prepare <==> Batch_size:{}, GPU {}:({}) <==> Begin'.format(cfg.train_batch_size_per_gpu*cfg.gpu, cfg.gpu, cfg.gpu_ids))
     print('EAST <==> Prepare <==> DataLoader <==> Done') 
     
 
@@ -118,7 +127,7 @@ def main():
         if epoch % cfg.eval_iteration == 0:
 
             # create res_file and img_with_box
-            output_txt_dir_path = predict(model, criterion, epoch)
+            output_txt_dir_path = predict(cfg, model, criterion, epoch)
 
             # Zip file
             submit_path = MyZip(output_txt_dir_path, epoch)

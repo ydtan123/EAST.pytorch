@@ -40,6 +40,8 @@ def getLocation(txtfile, imgw, imgh, merge):
             w = float(data[3]) * imgw
             h = float(data[4]) * imgh
             symbols.append((data[0], cx, cy, w/2, h/2))
+    if (len(symbols) == 0):
+        return None
     symbols_sorted = sorted(symbols, key=lambda x: x[1])
     words = []
     for s in symbols_sorted:
@@ -101,12 +103,17 @@ if (args["prepare"] != ''):
         if (not os.path.isfile(str(f.with_suffix(".txt")))):
             print("GT file for {0} does not exist".format(f))
             continue
+
         img = cv2.imread(str(f))
+        words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0], args["merge_text"])
+        if (words is None):
+            print("Non-digit image {0}".format(f))
+            continue
+        
         new_img = img
         if (args["resize"] != ""):
             new_img = np.zeros((784, 1280, 3), dtype=np.uint8)
             new_img[0:img.shape[0], 0:img.shape[1]] = img
-        words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0], args["merge_text"])
 
         if (trn < train_size):
             writeGT(

@@ -12,13 +12,9 @@ import torch
 import model
 from data_utils import restore_rectangle, polygon_area
 from torch.autograd import Variable
-import config as cfg
 import sys
 from torchvision import transforms
 import model
-test_data_path = cfg.test_img_path
-number_of_test = cfg.number_of_test
-
 
 def rotate(box_List,image):
     #xuan zhuan tu pian
@@ -52,7 +48,7 @@ def rotate(box_List,image):
     image_new = cv2.warpAffine(image, M, (w, h))
     return image_new
 
-def get_images_for_test():
+def get_images_for_test(test_data_path):
     '''
     find image files in test data path
     :return: list of files found
@@ -243,7 +239,7 @@ def transform_for_test():
     return transform
 
 
-def predict(model, criterion, epoch):
+def predict(cfg, model, criterion, epoch):
     # prepare ooutput directory
     print('EAST <==> TEST <==> Create Res_file and Img_with_box <==> Begin')
     result_root = os.path.abspath(cfg.result)
@@ -274,11 +270,11 @@ def predict(model, criterion, epoch):
     print('EAST <==> TEST <==> Create Res_file and Img_with_box Directory ')
 
     model = model.eval()
-    im_fn_list = get_images_for_test()
+    im_fn_list = get_images_for_test(cfg.test_img_path)
     start = time.time()
 
     for idx, im_fn in enumerate(im_fn_list):
-        if (idx > number_of_test):
+        if (idx > cfg.number_of_test):
             break
         print('EAST <==> TEST <==> idx:{} <==> Begin'.format(idx))
         im = cv2.imread(im_fn)[:, :, ::-1]
