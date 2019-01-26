@@ -30,7 +30,10 @@ def getLocation(txtfile, imgw, imgh, merge):
                 continue
             dval = int(data[0])
             if (dval < 0 or dval > 9):
-                print("Invalid number {0} in {1}".format(data[0], txtfile))
+                if (dval == 10):
+                    print("Skip 10 in {0}".format(txtfile))
+                else:
+                    print("Invalid number {0} in {1}".format(data[0], txtfile))
                 continue
             cx = float(data[1]) * imgw
             cy = float(data[2]) * imgh
@@ -69,9 +72,7 @@ parser.add_argument("-m", "--max", type=int, help="Maximum images to process", d
 parser.add_argument("-p", "--prepare", type=str, help="Prepare training and testing sets", default='')
 parser.add_argument("-s", "--save", action='store_true', help="Save text area")
 parser.add_argument("-g", "--merge-text", action='store_true', help='Merge nearby text areas')
-parser.add_argument("-a", "--train-img-root", type=str, help='train image root')
-parser.add_argument("-b", "--train-gt-root", type=str, help='train gt root')
-parser.add_argument("-c", "--test-img-root", type=str, help='test image root')
+parser.add_argument("-a", "--data-root", type=str, help='dataset root')
 parser.add_argument("-r", "--resize", type=str, default="", help='resize the image')
 
 args = vars(parser.parse_args())
@@ -81,12 +82,17 @@ if (args["prepare"] != ''):
     train_size, test_size = int(d[0]), int(d[1])
     trn = 0
     tst = 0
-    if not os.path.exists(args['train_img_root']):
-        os.makedirs(args['train_img_root'])
-    if not os.path.exists(args['train_gt_root']):
-        os.makedirs(args['train_gt_root'])
-    if not os.path.exists(args['test_img_root']):
-        os.makedirs(args['test_img_root'])
+
+    train_img_root = os.path.join(args['data_root'], "train/img")
+    train_gt_root = os.path.join(args['data_root'], "train/gt")
+    train_img_with_box = os.path.join(args['data_root'], "train/img_with_box")
+    test_root = os.path.join(args['data_root'], "test")
+    if not os.path.exists(args['data_root']):
+        os.makedirs(test_root)
+        os.makedirs(train_img_with_box)
+        os.makedirs(train_gt_root)
+        os.makedirs(train_img_root)
+
     file_dict = {}
     for f in pathlib.Path(args["image"]).glob("**/*.jpg"):
         if (f in file_dict):
@@ -95,9 +101,6 @@ if (args["prepare"] != ''):
         if (not os.path.isfile(str(f.with_suffix(".txt")))):
             print("GT file for {0} does not exist".format(f))
             continue
-        file_dict[f] = True
-        if (trn >= train_size and tst >= test_size):
-            break
         img = cv2.imread(str(f))
         new_img = img
         if (args["resize"] != ""):
@@ -107,21 +110,27 @@ if (args["prepare"] != ''):
 
         if (trn < train_size):
             writeGT(
-                words, "{0}/img_{1}.txt".format(args["train_gt_root"], trn),
+                words, "{0}/img_{1}.txt".format(train_gt_root, trn),
                 new_img if args["debug"] else None)
-            cv2.imwrite(
-                "{0}/img_{1}.jpg".format(args["train_img_root"],trn), new_img)
+            cv2.imwrite("{0}/img_{1}.jpg".format(train_img_root,trn), new_img)
             print("Train: {0} -> {1}".format(f, trn))
             file_dict[f] = "train_{0}".format(trn)
+
+            for s in words:
+                cv2.rectangle(new_img, (s[1], s[2]),(s[3],s[4]),(0,255,0),1)
+            cv2.imwrite("{0}/img_{1}.jpg".format(train_img_with_box,trn), new_img)
             trn += 1
         elif (tst < test_size):
-            writeGT(words, "{0}/gt_img_{1}.txt".format(args["test_img_root"], tst))
-            cv2.imwrite("{0}/img_{1}.jpg".format(args["test_img_root"], tst), new_img)
+            writeGT(words, "{0}/gt_img_{1}.txt".format(test_root, tst))
+            cv2.imwrite("{0}/img_{1}.jpg".format(test_root, tst), new_img)
             print("Test: {0} -> {1}".format(f, tst))
             file_dict[f] = "test_{0}".format(tst)
             tst += 1
+        if (trn >= train_size and tst >= test_size):
+            break
+        
 
-    with open("{0}/filelog.txt".format(args["train_img_root"]), "w") as filelog:
+    with open(os.path.join(args['data_root'], "filelog.txt"), "w+") as filelog:
         for f, idx in file_dict.items():
             filelog.write("{0} {1}\n".format(f, idx))
 
