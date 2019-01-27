@@ -1,5 +1,6 @@
+#!/usr/bin/python
 # -*- coding:utf-8 -*-
-#!/usr/bin/python3
+
 import argparse
 import cv2
 import time
@@ -130,7 +131,7 @@ def detect(score_map, geo_map, timer, score_map_thresh=1e-5, box_thresh=1e-8, nm
     # restore
     start = time.time()
     text_box_restored = restore_rectangle(xy_text[:, ::-1]*4, geo_map[xy_text[:, 0], xy_text[:, 1], :]) # N*4*2
-    #print('{} text boxes before nms'.format(text_box_restored.shape[0]))
+    print('{} text boxes before nms'.format(text_box_restored.shape[0]))
     boxes = np.zeros((text_box_restored.shape[0], 9), dtype=np.float32)
     boxes[:, :8] = text_box_restored.reshape((-1, 8))
     boxes[:, 8] = score_map[xy_text[:, 0], xy_text[:, 1]]
@@ -287,15 +288,16 @@ def predict_one(img_file, model, criterion, epoch):
 
 
 def save_boxes(filename, im, boxes):
-    with open(filename, 'w') as f:
+    with open(filename, 'w+') as f:
         for box in boxes:
             box = sort_poly(box.astype(np.int32))
 
             if np.linalg.norm(box[0] - box[1]) < 5 or np.linalg.norm(box[3] - box[0]) < 5:
-                #print('wrong direction')
+                print('wrong direction')
                 continue
             
             if box[0, 0] < 0 or box[0, 1] < 0 or box[1,0] < 0 or box[1,1] < 0 or box[2,0]<0 or box[2,1]<0 or box[3,0] < 0 or box[3,1]<0:
+                print("wrong box, {}".format(box))
                 continue
                 
             poly = np.array([[box[0, 0], box[0, 1]], [box[1, 0], box[1, 1]], [box[2, 0], box[2, 1]], [box[3, 0], box[3, 1]]])
@@ -444,7 +446,14 @@ if __name__ == "__main__":
     start_epoch = checkpoint['epoch']
     model.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer'])
-    print("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Done".format(weightpath))
+    print("EAST <==> Prepare <==> Loading checkpoint '{}', epoch={} <==> Done".format(weightpath, start_epoch))
 
+    model.eval()
     boxes, timer, img = predict_one(args["image"], model, criterion, start_epoch)
+    if (boxes is None):
+        print("Did not find boxes")
+    else:
+        print("found {} boxes".format(len(boxes)))
     save_boxes(args["boxes"], img, boxes)
+    cv2.imwrite("./img_with_box.jpg", img[:, :, ::-1])
+        
