@@ -1,4 +1,6 @@
 # -*- coding:utf-8 -*-
+#!/usr/bin/python3
+import argparse
 import cv2
 import time
 import math
@@ -15,6 +17,15 @@ from torch.autograd import Variable
 import sys
 from torchvision import transforms
 import model
+from utils.init import *
+from torch import nn
+from torch.optim import lr_scheduler
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from model import East
+from loss import *
+import torch.backends.cudnn as cudnn
 
 def rotate(box_List,image):
     #xuan zhuan tu pian
@@ -239,6 +250,65 @@ def transform_for_test():
     return transform
 
 
+def predict_one(img_file, model, criterion, epoch):
+    im = cv2.imread(img_file)[:, :, ::-1]
+
+    im_resized, (ratio_h, ratio_w) = resize_image(im)
+    im_resized = im_resized.astype(np.float32)
+    im_resized = im_resized.transpose(2, 0, 1)
+    im_resized = torch.from_numpy(im_resized)
+    im_resized = im_resized.cuda()
+    im_resized = im_resized.unsqueeze(0)
+
+    timer = {'net': 0, 'restore': 0, 'nms': 0}
+    start = time.time()
+    
+    score, geometry = model(im_resized)
+
+    timer['net'] = time.time() - start
+    #print('EAST <==> TEST <==> idx:{} <==> model  :{:.2f}ms'.format(idx, timer['net']*1000))
+
+    score = score.permute(0, 2, 3, 1)
+    geometry = geometry.permute(0, 2, 3, 1)
+    score = score.data.cpu().numpy()
+    geometry = geometry.data.cpu().numpy()
+
+    boxes, timer = detect(score_map=score, geo_map=geometry, timer=timer)
+    #print('EAST <==> TEST <==> idx:{} <==> restore:{:.2f}ms'.format(idx, timer['restore']*1000))
+    #print('EAST <==> TEST <==> idx:{} <==> nms    :{:.2f}ms'.format(idx, timer['nms']*1000))
+
+
+    #print('EAST <==> TEST <==> Record and Save <==> id:{} <==> Begin'.format(idx))
+    if boxes is not None:
+        boxes = boxes[:, :8].reshape((-1, 4, 2))
+        boxes[:, :, 0] /= ratio_w
+        boxes[:, :, 1] /= ratio_h
+    return boxes, timer, im
+
+
+def save_boxes(filename, im, boxes):
+    with open(filename, 'w') as f:
+        for box in boxes:
+            box = sort_poly(box.astype(np.int32))
+
+            if np.linalg.norm(box[0] - box[1]) < 5 or np.linalg.norm(box[3] - box[0]) < 5:
+                #print('wrong direction')
+                continue
+            
+            if box[0, 0] < 0 or box[0, 1] < 0 or box[1,0] < 0 or box[1,1] < 0 or box[2,0]<0 or box[2,1]<0 or box[3,0] < 0 or box[3,1]<0:
+                continue
+                
+            poly = np.array([[box[0, 0], box[0, 1]], [box[1, 0], box[1, 1]], [box[2, 0], box[2, 1]], [box[3, 0], box[3, 1]]])
+            
+            p_area = polygon_area(poly)
+            if p_area > 0:
+                poly = poly[(0, 3, 2, 1), :]
+
+            f.write('{},{},{},{},{},{},{},{}\r\n'.format(poly[0, 0], poly[0, 1], poly[1, 0], poly[1, 1], poly[2, 0], poly[2, 1], poly[3, 0], poly[3, 1],))
+            cv2.polylines(im[:, :, ::-1], [box.astype(np.int32).reshape((-1, 1, 2))], True, color=(255, 255, 0), thickness=1)
+    return im
+
+
 def predict(cfg, model, criterion, epoch):
     # prepare ooutput directory
     print('EAST <==> TEST <==> Create Res_file and Img_with_box <==> Begin')
@@ -274,8 +344,6 @@ def predict(cfg, model, criterion, epoch):
     start = time.time()
 
     for idx, im_fn in enumerate(im_fn_list):
-        if (idx > cfg.number_of_test):
-            break
         print('EAST <==> TEST <==> idx:{} <==> Begin'.format(idx))
         im = cv2.imread(im_fn)[:, :, ::-1]
 
@@ -349,5 +417,34 @@ def predict(cfg, model, criterion, epoch):
         print('EAST <==> TEST <==> Record and Save <==> ids:{} <==> Done'.format(idx))
     return  output_dir_txt
 
+
 if __name__ == "__main__":
-    predict()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", type=str, default="", help='specify the config file')
+    parser.add_argument("-w", "--weight", type=str, help='specify the weight file')
+    parser.add_argument("-i", "--image", type=str, help='specify the image to predict')
+    parser.add_argument("-b", "--boxes", type=str, help='specify the box file')
+
+    args = vars(parser.parse_args())
+
+    cfg = __import__(args["config"]) if (args["config"] != "") else __import__("config")
+
+    model = East()
+    model = nn.DataParallel(model, device_ids=cfg.gpu_ids)
+    model = model.cuda()
+    init_weights(model, init_type=cfg.init_type)
+    cudnn.benchmark = True
+    
+    criterion = LossFunc()
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=10000, gamma=0.94)
+    weightpath = os.path.abspath(args["weight"])
+    print("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Begin".format(weightpath))
+    checkpoint = torch.load(weightpath)
+    start_epoch = checkpoint['epoch']
+    model.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    print("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Done".format(weightpath))
+
+    boxes, timer, img = predict_one(args["image"], model, criterion, start_epoch)
+    save_boxes(args["boxes"], img, boxes)

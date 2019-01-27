@@ -68,7 +68,7 @@ def main():
     parser.add_argument("-c", "--config", type=str, default="", help='specify the config file')
     args = vars(parser.parse_args())
 
-    cfg = __import__(args["config"]) if (args["config"] != "") else __import__(config)
+    cfg = __import__(args["config"]) if (args["config"] != "") else __import__("config")
     dataroot = cfg.dataroot if (args["data_root"] == "") else args["data_root"]
     
     hmean = .0
