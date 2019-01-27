@@ -162,6 +162,17 @@ def resnet50(pretrained=True, **kwargs):
     return model
 
 
+def resnet152(pretrained=False, **kwargs):
+    """Constructs a ResNet-152 model.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+    """
+    model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
+    if pretrained:
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
+    return model
+
+
 def mean_image_subtraction(images, means=[123.68, 116.78, 103.94]):
     '''
     image normalization
@@ -181,7 +192,8 @@ def mean_image_subtraction(images, means=[123.68, 116.78, 103.94]):
 class East(nn.Module):
     def __init__(self):
         super(East, self).__init__()
-        self.resnet = resnet50(True)
+        #self.resnet = resnet50(True)
+        self.resnet = resnet152(True)
         self.conv1 = nn.Conv2d(3072, 128, 1)
         self.bn1 = nn.BatchNorm2d(128)
         self.relu1 = nn.ReLU()
