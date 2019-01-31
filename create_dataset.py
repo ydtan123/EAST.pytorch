@@ -96,6 +96,7 @@ if (args["prepare"] != ''):
         os.makedirs(train_img_root)
 
     file_dict = {}
+    max_width = 0
     for f in pathlib.Path(args["image"]).glob("**/*.jpg"):
         if (f in file_dict):
             print("{0} has more than one copy".format(f))
@@ -105,6 +106,9 @@ if (args["prepare"] != ''):
             continue
 
         img = cv2.imread(str(f))
+        h, w, _ = img.shape()
+        if (w > max_width):
+            max_width = w
         words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0], args["merge_text"])
         if (words is None):
             print("Non-digit image {0}".format(f))
@@ -136,7 +140,7 @@ if (args["prepare"] != ''):
         if (trn >= train_size and tst >= test_size):
             break
         
-
+    print("max width of all training images is : {0}".format(max_width))
     with open(os.path.join(args['data_root'], "filelog.txt"), "w+") as filelog:
         for f, idx in file_dict.items():
             filelog.write("{0} {1}\n".format(f, idx))
