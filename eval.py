@@ -12,6 +12,7 @@ import locality_aware_nms as nms_locality
 import lanms
 import shutil
 import torch
+import logging
 import model
 from data_utils import restore_rectangle, polygon_area
 from torch.autograd import Variable
@@ -102,6 +103,7 @@ def resize_image(im, max_side_len=2400):
 
     resize_h = resize_h if resize_h % 32 == 0 else (resize_h // 32 - 1) * 32
     resize_w = resize_w if resize_w % 32 == 0 else (resize_w // 32 - 1) * 32
+    
     #resize_h, resize_w = 512, 512
     im = cv2.resize(im, (int(resize_w), int(resize_h)))
 
@@ -426,14 +428,21 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--weight", type=str, help='specify the weight file')
     parser.add_argument("-i", "--image", type=str, help='specify the image to predict')
     parser.add_argument("-b", "--boxes", type=str, help='specify the box file')
+    parser.add_argument("-l", "--log", type=str, help='set logging level')
+    parser.add_argument("-n", "--nogpu", action='store_true', help='set logging level')
 
     args = vars(parser.parse_args())
 
     cfg = __import__(args["config"]) if (args["config"] != "") else __import__("config")
 
+    numeric_level = getattr(logging, args["log"].upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % args["log"])
+    logging.basicConfig(level=numeric_level)
+
     model = East()
     model = nn.DataParallel(model, device_ids=cfg.gpu_ids)
-    model = model.cuda()
+    model = model.cpu() if (args["nogpu"]) else model.cuda()
     init_weights(model, init_type=cfg.init_type)
     cudnn.benchmark = True
     
@@ -442,7 +451,10 @@ if __name__ == "__main__":
     scheduler = lr_scheduler.StepLR(optimizer, step_size=10000, gamma=0.94)
     weightpath = os.path.abspath(args["weight"])
     print("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Begin".format(weightpath))
-    checkpoint = torch.load(weightpath)
+    if (args["nogpu"]):
+        checkpoint = torch.load(weightpath)
+    else:
+        checkpoint = torch.load(weightpath, map_location=lambda storage, loc: storage)
     start_epoch = checkpoint['epoch']
     model.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer'])
