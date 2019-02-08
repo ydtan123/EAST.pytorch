@@ -1,7 +1,7 @@
 #data
-dataroot='./dataset'  #./data/train/img      ./data/train/gt
-test_img_path='./dataset/test'
-result = './result'
+dataroot='./dataset_resnet152'  #./data/train/img      ./data/train/gt
+test_img_path='./dataset_resnet152/test'
+result = './result_resnet152'
 number_of_test = 50
 
 lr = 0.0001

@@ -106,7 +106,7 @@ if (args["prepare"] != ''):
             continue
 
         img = cv2.imread(str(f))
-        h, w, _ = img.shape()
+        h, w, _ = img.shape
         if (w > max_width):
             max_width = w
         words = getLocation(f.with_suffix(".txt"), img.shape[1], img.shape[0], args["merge_text"])
