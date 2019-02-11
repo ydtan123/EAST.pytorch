@@ -44,13 +44,13 @@ class EASTPredictor(object):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=10000, gamma=0.94)
         self.weightpath = os.path.abspath(weight_path)
-        print("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Begin".format(self.weightpath))
+        logging.debug("EAST <==> Prepare <==> Loading checkpoint '{}' <==> Begin".format(self.weightpath))
         checkpoint = torch.load(self.weightpath)
 
         self.start_epoch = checkpoint['epoch']
         self.model.load_state_dict(checkpoint['state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
-        print("EAST <==> Prepare <==> Loading checkpoint '{}', epoch={} <==> Done".format(self.weightpath, self.start_epoch))
+        logging.debug("EAST <==> Prepare <==> Loading checkpoint '{}', epoch={} <==> Done".format(self.weightpath, self.start_epoch))
         self.model.eval()
 
     def resize_image(self, im, max_side_len=2400):
@@ -96,17 +96,18 @@ class EASTPredictor(object):
         # restore
         start = time.time()
         text_box_restored = restore_rectangle(xy_text[:, ::-1]*4, geo_map[xy_text[:, 0], xy_text[:, 1], :]) # N*4*2
-        print('{} text boxes before nms'.format(text_box_restored.shape[0]))
+        logging.debug('{} text boxes before nms'.format(text_box_restored.shape[0]))
         boxes = np.zeros((text_box_restored.shape[0], 9), dtype=np.float32)
         boxes[:, :8] = text_box_restored.reshape((-1, 8))
         boxes[:, 8] = score_map[xy_text[:, 0], xy_text[:, 1]]
         # nms part
         start = time.time()
         # boxes = nms_locality.nms_locality(boxes.astype(np.float64), nms_thres)
+        logging.debug('{} boxes before merging'.format(boxes.shape[0]))
         boxes = lanms.merge_quadrangle_n9(boxes.astype('float32'), nms_thres)
         if boxes.shape[0] == 0:
             return None
-    
+        logging.debug('{} boxes before checking scores'.format(boxes.shape[0]))
         # here we filter some low score boxes by the average score map, this is different from the orginal paper
         for i, box in enumerate(boxes):
             mask = np.zeros_like(score_map, dtype=np.uint8)
@@ -141,35 +142,41 @@ class EASTPredictor(object):
         geometry = geometry.permute(0, 2, 3, 1)
         score = score.data.cpu().numpy()
         geometry = geometry.data.cpu().numpy()
-    
+
         boxes = self.detect(score_map=score, geo_map=geometry)
 
+        letters = None
         if boxes is not None:
             boxes = boxes[:, :8].reshape((-1, 4, 2))
             boxes[:, :, 0] /= ratio_w
             boxes[:, :, 1] /= ratio_h
-            print("found {} boxes".format(len(boxes)))
+            logging.debug("found {} boxes".format(len(boxes)))
             fstem = pathlib.Path(img_file).stem
-            self.save_boxes(os.path.join(self.output_path, fstem + "_boxes.txt"), im, boxes)
+            letters, im = self.save_boxes(os.path.join(self.output_path, fstem + "_boxes.txt"), im, boxes)
             cv2.imwrite(os.path.join(self.output_path, fstem + "_with_box.jpg"), im[:, :, ::-1])
         else:
-            print("Did not find boxes")
+            logging.debug("Did not find boxes")
     
-        return boxes, im
+        return letters, im
     
     
     def save_boxes(self, filename, im, boxes):
+        letters = []
         with open(filename, 'w+') as f:
             for box in boxes:
                 box = self.sort_poly(box.astype(np.int32))
     
                 if np.linalg.norm(box[0] - box[1]) < 5 or np.linalg.norm(box[3] - box[0]) < 5:
-                    print('wrong direction')
+                    logging.debug('wrong direction')
                     continue
                 
-                if box[0, 0] < 0 or box[0, 1] < 0 or box[1,0] < 0 or box[1,1] < 0 or box[2,0]<0 or box[2,1]<0 or box[3,0] < 0 or box[3,1]<0:
-                    print("wrong box, {}".format(box))
-                    continue
+                #if box[0, 0] < 0 or box[0, 1] < 0 or box[1,0] < 0 or box[1,1] < 0 or box[2,0]<0 or box[2,1]<0 or box[3,0] < 0 or box[3,1]<0:
+                #    logging.debug("wrong box, {}".format(box))
+                #    continue
+                for x in range(4):
+                    for y in [0, 1]:
+                        if (box[x, y] < 0):
+                            box[x, y] = 0
                     
                 poly = np.array([[box[0, 0], box[0, 1]], [box[1, 0], box[1, 1]], [box[2, 0], box[2, 1]], [box[3, 0], box[3, 1]]])
                 
@@ -177,9 +184,11 @@ class EASTPredictor(object):
                 if p_area > 0:
                     poly = poly[(0, 3, 2, 1), :]
     
-                f.write('{},{},{},{},{},{},{},{}\r\n'.format(poly[0, 0], poly[0, 1], poly[1, 0], poly[1, 1], poly[2, 0], poly[2, 1], poly[3, 0], poly[3, 1],))
+                f.write('{},{},{},{},{},{},{},{}\r\n'
+                        .format(poly[0, 0], poly[0, 1], poly[1, 0], poly[1, 1], poly[2, 0], poly[2, 1], poly[3, 0], poly[3, 1],))
                 cv2.polylines(im[:, :, ::-1], [box.astype(np.int32).reshape((-1, 1, 2))], True, color=(255, 255, 0), thickness=1)
-        return im
+                letters.append(('', poly[0, 0], poly[0, 1], poly[2, 0], poly[2, 1]))
+        return letters, im
 
 
 if __name__ == "__main__":
